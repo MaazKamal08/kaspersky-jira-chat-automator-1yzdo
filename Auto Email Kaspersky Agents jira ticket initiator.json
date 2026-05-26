@@ -1,0 +1,245 @@
+{
+  "name": "Auto Email Kaspersky Agents jira ticket initiator",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "simple": false,
+        "filters": {
+          "sender": "titanium-soc@rapidcompute.com"
+        },
+        "options": {
+          "dataPropertyAttachmentsPrefixName": "attachment_"
+        }
+      },
+      "id": "1c535a00-6901-4e84-a94c-828b12285cca",
+      "name": "Gmail Trigger",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "nYtTqJpvcZCJXcSP",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Robust parser for Kaspersky \"status of device\" alerts\n// Put this in an n8n Function node (returns an array of items)\n\n// 1) Grab the inbound payload (support multiple field names)\nconst item = $input.first().json || {};\nlet body = item.text || item.textAsHtml || item.html || \"\";\n\n// 2) If body contains escaped newlines like \"\\n\", convert them to real newlines\nbody = body.replace(/\\\\n/g, \"\\n\");\n\n// 3) If HTML present, convert <li> to newlines before stripping tags (preserve list items)\nif (/<\\/?li/i.test(body)) {\n  body = body\n    .replace(/<li[^>]*>/gi, \"\\n\")   // each <li> becomes a newline start\n    .replace(/<\\/li>/gi, \"\\n\");     // ensure closing li also becomes newline\n}\n\n// 4) Strip remaining HTML tags, decode simple entities, normalize Unicode bullets/spaces\nbody = body\n  .replace(/<[^>]+>/g, \" \")        // remove tags\n  .replace(/&nbsp;/gi, \" \")        // common entity\n  .replace(/\\u00a0/g, \" \")         // non-breaking space\n  .replace(/\\u2022/g, \"-\")         // bullet to dash\n  .replace(/\\r/g, \"\")              // strip CR\n  .replace(/\\t/g, \" \")             // tabs to spaces\n  .replace(/\\s{2,}/g, \" \")         // collapse whitespace\n  .trim();\n\n// 5) Use a global regex to grab each \"status of device\" block\n// This will capture from \"status of device\" up to the next \"status of device\" or end-of-string\nconst blocks = [];\nconst blockRegex = /status of device[\\s\\S]*?(?=(?:status of device)|$)/gi;\nlet bmatch;\nwhile ((bmatch = blockRegex.exec(body)) !== null) {\n  blocks.push(bmatch[0].trim());\n}\n\n// 6) If blocks empty, as a fallback try line-based extraction that looks for lines containing \"status of device\"\nif (blocks.length === 0) {\n  const lines = body.split(\"\\n\").map(l => l.trim()).filter(Boolean);\n  for (const ln of lines) {\n    if (/status of device/i.test(ln)) blocks.push(ln);\n  }\n}\n\n// 7) Clean each block (remove leading bullets/dashes/asterisks and join wrapped lines)\nconst alerts = blocks.map(bl => {\n  // join internal wrapped fragments into one line\n  let cleaned = bl.replace(/\\n+/g, \" \").replace(/\\s{2,}/g, \" \").trim();\n  // remove any leading \"- \" or \"*\" or numbering\n  cleaned = cleaned.replace(/^[-\\*\\s]+/g, \"\");\n  // remove stray asterisks used for bold in text versions\n  cleaned = cleaned.replace(/\\*/g, \"\");\n  return cleaned;\n}).filter(Boolean);\n\n// 8) Return as n8n items (one item per alert)\nif (alerts.length === 0) {\n  // helpful debug if nothing matched\n  return [{ json: { error: \"No alerts parsed\", sample: body.slice(0, 1000) } }];\n}\nreturn alerts.map(a => ({ json: { alert: a } }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        688,
+        0
+      ],
+      "id": "efd224cc-d31d-45ac-b879-1e4eec19eeb4",
+      "name": "Code in JavaScript",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "project": {
+          "__rl": true,
+          "value": "10026",
+          "mode": "list",
+          "cachedResultName": "Keenu ITSM"
+        },
+        "issueType": {
+          "__rl": true,
+          "value": "10002",
+          "mode": "list",
+          "cachedResultName": "Task"
+        },
+        "summary": "=Kaspersky Agent Disable OR Not Running.",
+        "additionalFields": {
+          "description": "=Dear team , kindly resolve the following \nissues of the the devices : \n{{ $json.jira_description }}"
+        }
+      },
+      "type": "n8n-nodes-base.jira",
+      "typeVersion": 1,
+      "position": [
+        1136,
+        0
+      ],
+      "id": "8d72ad18-ddbb-4a73-b436-abeced516644",
+      "name": "Create an issue",
+      "credentials": {
+        "jiraSoftwareCloudApi": {
+          "id": "KGzlQEZ6MC1BNTVq",
+          "name": "Jira SW Cloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c694c8be-1c00-4789-9379-3c364b7e5017",
+              "name": "text",
+              "value": "={{ $json.text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        464,
+        0
+      ],
+      "id": "9d0422ce-fde7-425a-b89c-5f459c4ae343",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Combine all alerts from previous node into one Jira ticket body\n\n// Get all input items\nconst items = $input.all();\n\n// Combine all alert lines into one formatted block\nconst combined = items\n  .map((item, index) => `${index + 1}. ${item.json.alert}`)\n  .join(\"\\n\");\n\n// Optional: add a summary heading\nconst jiraDescription = `🚨 *Kaspersky Alerts Summary*\\n\\n${combined}`;\n\nreturn [{ json: { jira_description: jiraDescription } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        0
+      ],
+      "id": "cbbac998-4543-46d0-a355-9a08ca421f89",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.filter(item => {\n  const subject = (item.json.subject || \"\").toLowerCase();\n  return (\n    subject.includes(\"license expired\") ||\n    subject.includes(\"expires soon\") ||\n    subject.includes(\"malware scan overdue\") ||\n    subject.includes(\"protection is disabled\")\n  );\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        288,
+        0
+      ],
+      "id": "b1d0fc1b-8a50-4b43-aed4-41b6a38e88fa",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "operation": "sendAndWait",
+        "spaceId": "=spaces/r7ntBcAAAAE",
+        "message": "=https://keenu.atlassian.net/browse/{{ $json.key }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleChat",
+      "typeVersion": 1,
+      "position": [
+        1440,
+        0
+      ],
+      "id": "86b583a6-30da-4bc0-8f08-51f936e2f158",
+      "name": "Send message and wait for response",
+      "webhookId": "4e02acaa-0853-45f7-9d86-d32fc0b05eee",
+      "credentials": {
+        "googleChatOAuth2Api": {
+          "id": "qyWvor5lMLj4tarI",
+          "name": "Chat account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Gmail Trigger": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Create an issue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript2": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create an issue": {
+      "main": [
+        [
+          {
+            "node": "Send message and wait for response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "6b253c90-1bee-4e21-bfe8-904a34e8c204",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "3127e0702a73301f3dd2c5019e9732e437e6d3bef84a4f13fdb7f52d826473ea"
+  },
+  "id": "xbjd3TEztxSBlwwc",
+  "tags": [
+    {
+      "updatedAt": "2026-02-18T07:51:01.671Z",
+      "createdAt": "2026-02-18T07:51:01.671Z",
+      "id": "vOEmfA4A1Da5KywU",
+      "name": "Security Automation"
+    }
+  ]
+}
