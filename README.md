@@ -2,7 +2,7 @@
 
 ## Overview
 
-This n8n workflow monitors a specific Gmail inbox for Kaspersky security alerts from 'titanium-soc@rapidcompute.com'. It filters emails by subject keywords indicating critical issues (e.g., license expired, protection disabled). The workflow then robustly parses the email body to extract 'status of device' alerts, consolidates these into a single summary, creates a Jira Task ticket in 'Keenu ITSM' with this summary, and finally posts the Jira ticket link to a designated Google Chat space.
+This n8n workflow monitors a specific Gmail inbox for Kaspersky security alerts from 'any email'. It filters emails by subject keywords indicating critical issues (e.g., license expired, protection disabled). The workflow then robustly parses the email body to extract 'status of device' alerts, consolidates these into a single summary, creates a Jira Task ticket in 'Keenu ITSM' with this summary, and finally posts the Jira ticket link to a designated Google Chat space.
 
 ## Features
 
@@ -22,12 +22,12 @@ This n8n workflow monitors a specific Gmail inbox for Kaspersky security alerts 
 
 ## Trigger
 
-The workflow is triggered every minute by the 'Gmail Trigger' node, checking for new emails from 'titanium-soc@rapidcompute.com' that match specific subject keywords.
+The workflow is triggered every minute by the 'Gmail Trigger' node, checking for new emails from 'any email' that match specific subject keywords.
 
 ## Prerequisites
 
 - An active n8n instance.
-- A Gmail account (connected via OAuth2) that receives Kaspersky alerts from 'titanium-soc@rapidcompute.com'.
+- A Gmail account (connected via OAuth2) that receives Kaspersky alerts from 'any email'.
 - A Jira Software Cloud instance with a project named 'Keenu ITSM' (ID 10026) and 'Task' issue type (ID 10002) configured.
 - A Google Chat space where notifications will be posted.
 
@@ -40,7 +40,7 @@ The workflow is triggered every minute by the 'Gmail Trigger' node, checking for
 ## Configuration
 
 1. Ensure the 'Gmail Trigger' node is connected to the correct Gmail account and monitoring the intended inbox.
-2. Verify the 'Gmail Trigger' filter for sender 'titanium-soc@rapidcompute.com' matches your incoming alert emails.
+2. Verify the 'Gmail Trigger' filter for sender 'any email' matches your incoming alert emails.
 3. In the 'Code in JavaScript2' (email filter) node, adjust subject keywords if your Kaspersky alerts use different phrasing for critical issues.
 4. In the 'Create an issue' node, confirm that the 'Project' (Keenu ITSM, ID 10026) and 'Issue Type' (Task, ID 10002) correspond to your Jira setup.
 5. In the 'Send message and wait for response' (Google Chat) node, update the 'Space ID' to your target Google Chat room.
@@ -48,13 +48,13 @@ The workflow is triggered every minute by the 'Gmail Trigger' node, checking for
 ## Usage
 
 1. Activate the workflow in n8n.
-2. Ensure your configured Gmail account receives Kaspersky alerts from 'titanium-soc@rapidcompute.com'.
+2. Ensure your configured Gmail account receives Kaspersky alerts from 'any email'.
 3. The workflow will automatically detect new emails matching the sender and subject filters every minute.
 4. Upon detection, it will parse the alert details, create a Jira ticket, and send a notification to Google Chat.
 
 ## Troubleshooting
 
-- **No workflow trigger / No emails processed**: Verify the workflow is active. Check Gmail Trigger's execution history. Confirm the sender filter ('titanium-soc@rapidcompute.com') is correct.
+- **No workflow trigger / No emails processed**: Verify the workflow is active. Check Gmail Trigger's execution history. Confirm the sender filter ('any email') is correct.
 - **Emails not filtered correctly**: Review the subject keywords in the 'Code in JavaScript2' node to ensure they match your Kaspersky alert subjects.
 - **Jira ticket content is incorrect/empty**: Inspect the input to 'Code in JavaScript' and 'Code in JavaScript1'. The parsing logic in 'Code in JavaScript' might need adjustments if Kaspersky email formats change.
 - **Jira ticket creation fails**: Check Jira credentials. Ensure the Jira Project ID (10026) and Issue Type ID (10002) are valid for your Jira instance.
